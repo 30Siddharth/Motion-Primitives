@@ -46,7 +46,9 @@ class motion_primitive:
     
     def u_max(self,u):
         self.u_max=u
-
+    
+    def generate_heuristic(start_state,end_states):
+        np.linang.norm((start_state-end_states))
 
     def generate_motion_primitive():
         """
@@ -189,7 +191,8 @@ if __name__ == "__main__":
 
     i=0
     while len(graph_search.node_q)>0:
-    """ chose node based on A* not simply pop stuff """
+    """ chose node based on A* not simply pop stuff 
+        use priority queue """
       node=graph_search.node_q.pop(0)
       if graph_search.generate_nodes(node,tate_space,smotion_primitive):
           break
