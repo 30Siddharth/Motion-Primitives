@@ -1,4 +1,5 @@
 Author: Siddharth Singh and Subhranshu Mahapatra
+The Simulator was developed by the faculty, Dr. James Paulos and TA's of MEAM 620 (Advanced Robotics at UPenn, Sprin 2020).
 
 Things we need not change:
 1. SE(3) controller. Might have to tune.
