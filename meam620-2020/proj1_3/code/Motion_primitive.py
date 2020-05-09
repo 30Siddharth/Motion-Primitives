@@ -14,7 +14,7 @@ class path_search:
     def __init__(self):
         pass
     
-    def optimal_path(self)
+    def optimal_path(self):
         
         """
         1. Optimality: how close the cost of an opti- mal (e.g., shortest) path in the lattice is to the truly optimal path in the continuum

@@ -97,9 +97,17 @@ class successors(object):
                                                           self.traj,         
                                                           t_final)
         
-        # if exit == 'Success: End reached.':
-        #     Rs = state
+        if exit == 'Success: End reached.':
+            err = state['x'] - flat['x']  # TODO check if order is stored in the same order in both dictionary
+            err_cs = np.sum(np.absolute(err))
+            Rsx = state['x']
+            Rsv = state['v']
+            
 
+
+
+        else:
+            err_cs = np.inf
         return Rs, err_cs
 
     def collision_check(self, x):
