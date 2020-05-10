@@ -222,7 +222,7 @@ if __name__ == "__main__":
     #TODO: Check this if reqd
     initial_state = {'x': start,
 				 'v': (0, 0, 0),
-				 'q': (0, 0, 0, 1), # [i,j,k,w]
+ 				 'q': (0, 0, 0, 1), # [i,j,k,w]
 				 'w': (0, 0, 0)}
 
     gs = successors(world)

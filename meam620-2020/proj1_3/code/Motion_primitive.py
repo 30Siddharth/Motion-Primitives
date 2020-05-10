@@ -8,7 +8,24 @@ import pdb
 import scipy.integrate as integrate
 import logging
 
+import inspect
+import json
+import matplotlib as mpl
+from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt
 
+
+import pdb
+import numpy as np
+from flightsim.simulate import Quadrotor, simulate, ExitStatus
+from flightsim.world import World
+from flightsim.crazyflie_params import quad_params
+from proj1_3.code.occupancy_map import OccupancyMap
+from proj1_3.code.se3_control import SE3Control
+from pathlib import Path
+from getSuccessors import successors
+from itertools import product
+  
 
 class path_search:
     def __init__(self):
@@ -28,13 +45,20 @@ class path_search:
 
 class motion_primitive:
     
-    def __init__(self):
+    def __init__(self,gs,dt):
         ### Constraints on Quadrotor dynamics ####
-        self.v_max
-        self.a_max
-        self.u_max
-        self.Dt=dt
-
+        self.v_max=0
+        self.a_max=0
+        
+        self.dt=dt
+        self.gs=gs
+        self.discretize=11;
+        self.start_state=  np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
+        self.ux = np.linspace(-30, 30, self.discretize)
+        self.uy = np.linspace(-30, 30, self.discretize)  
+        self.uz = np.linspace(-30, 30, self.discretize)
+        self.motion_primitive=[]
+    
     def robot_radius(self, rad):
         self.radius=rad
     
@@ -50,21 +74,26 @@ class motion_primitive:
     def generate_heuristic(start_state,end_states):
         np.linang.norm((start_state-end_states))
 
-    def generate_motion_primitive():
+    def update_start_state(self,start_state):
+        self.start_state=start_state
+
+    def generate_motion_primitive(self):
         """
         generate motion primitive with forward simulation
         """
+        N=self.discretize**3
+        self.motion_primitive=np.array(list(product(self.ux,self.uy,self.uz))).reshape((N,1,3))
 
-    def forward_simulation(start_state):
-        """ returns a series of end state using all motion primitives"""
-        end_states=forward_simulator()
-
-
-  
+    def get_successors(self):
+        rr, cc = gs.reachable(self.motion_primitive,self.start_state,self.dt)
+        rr=np.array(rr)
+        cc=np.array(cc)
+        print(rr.shape)
+        print(cc.shape)
         
 
 class graph_construct:
-    def __init__():
+    def __init__(gs):
 
         #variable time choice 
         self.del_t=0.1
@@ -91,6 +120,7 @@ class graph_construct:
 
         self.G.add_node(tuple(self.start_pos.reshape(4)))
         self.G.add_node(tuple(self.end_pos.reshape(4)))
+        self.gs=gs
     
 
     def generate_nodes(self,start_state,state_space,motion_primitive):
@@ -136,12 +166,8 @@ class state_space:
         self.z_ = np.linspace(-10, 10, 101)
         
 
-    def discretize(self):
-        # Discretize the Input Space. 
-        self.u1 = np.linspace(0, 2500, 51)
-        self.u2 = np.linspace(0, 2500, 51)
-        self.u3 = np.linspace(0, 2500, 51)
-        self.u4 = np.linspace(0, 2500, 51)
+
+        
     
 
     def find_closest_3D(self, pos):
@@ -171,34 +197,50 @@ class state_space:
         return pos
 
 if __name__ == "__main__":
-    print('hello')
-    ### set map ####
 
-    ### set limits ###
-
-    ### set start and end goals ###
-
-
-    ### Get trajectory ###
-
-    ### Trajectory tracking ###
 
     # Returns a motion primitive array"
-    motion_primitive=motion_primitive()
-    graph_search=graph_construct()
-    state_space=state_space()
+    filename = '../util/test_maze.json'
+    # Videoname = 'MyMap.mp4'
+
+    # Load the test example.
+    file = Path(inspect.getsourcefile(lambda:0)).parent.resolve() / '..' / 'util' / filename
+    world = World.from_file(file)          # World boundary and obstacles.
+    start  = world.world['start']          # Start point, shape=(3,)
+    goal   = world.world['goal']           # Goal point, shape=(3,)
+    # This object defines the quadrotor dynamical model and should not be changed.
+    robot_radius = 0.25
+
+    #TODO: Check this if reqd
+    initial_state = {'x': start,
+				 'v': (0, 0, 0),
+ 				 'q': (0, 0, 0, 1), # [i,j,k,w]
+				 'w': (0, 0, 0)}
+
+    gs = successors(world)
+    x0 = np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
+    um = np.array([[10,10,10],[20,20,20]]).reshape((2,1,3))
+    tau = 0.1
+    rr, cc = gs.reachable(um,x0,tau)
     
 
-    i=0
-    while len(graph_search.node_q)>0:
-    """ chose node based on A* not simply pop stuff 
-        use priority queue """
-      node=graph_search.node_q.pop(0)
-      if graph_search.generate_nodes(node,tate_space,smotion_primitive):
-          break
-      
-      if i%5000==0:
-          print("Iterator {} Length {}".format(i,len(graph_search.node_q)))
-      i=i+1
+    motion_primitive=motion_primitive(gs,tau)
+    motion_primitive.generate_motion_primitive()
+    motion_primitive.get_successors()
+   # graph_search=graph_construct(gs)
+   # state_space=state_space()
+    
 
-  path =nx.shortest_path(graph_search.G,tuple(graph_search.start_state,tuple(node),weight='cost')
+#     i=0
+#     while len(graph_search.node_q)>0:
+#     """ chose node based on A* not simply pop stuff 
+#         use priority queue """
+#       node=graph_search.node_q.pop(0)
+#       if graph_search.generate_nodes(node,tate_space,smotion_primitive):
+#           break
+      
+#       if i%5000==0:
+#           print("Iterator {} Length {}".format(i,len(graph_search.node_q)))
+#       i=i+1
+
+#   path =nx.shortest_path(graph_search.G,tuple(graph_search.start_state,tuple(node),weight='cost')
