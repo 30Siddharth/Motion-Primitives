@@ -1,9 +1,18 @@
+import inspect
+import json
+import matplotlib as mpl
+from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt
+
+
+import pdb
 import numpy as np
 from flightsim.simulate import Quadrotor, simulate, ExitStatus
 from flightsim.world import World
 from flightsim.crazyflie_params import quad_params
 from proj1_3.code.occupancy_map import OccupancyMap
 from proj1_3.code.se3_control import SE3Control
+from pathlib import Path
 
 
 
@@ -24,7 +33,7 @@ class successors(object):
         * Also check for collsions
 
         Input
-        Um  = N X 3 X 1 np array of motion primitives
+        Um  = N X 1 X 3 np array of motion primitives
         tau = duration of motion primitive
         x_init  = 1 X 17 array of initial state [x0, v0, a0, q0, w0]
             p0 = 1 X 3 -- postion in m
@@ -39,24 +48,27 @@ class successors(object):
         '''
 
         N = Um.shape[0]
-        Rs = np.zeros((N,3,3))
+        Rs = np.zeros((N,1,16))
         Cs = np.zeros((N,1))
         J0 = Um
-        x0 = x_init[0:9].reshape((3,3))
+        x0 = x_init
+        
         for i in range(N):
             collision_flag = False
-            self.D = np.append(x0, J0[i,:,:])
             # TODO check for collision using occupancy map
-            xf = self.D[0] + self.D[1]*tau + 0.5*self.D[2]*tau**2 + (1/6)*self.D[3]*tau**3
+            self.D = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
+            xf = self.D[0,:] + self.D[1,:]*tau + 0.5*self.D[2,:]*tau**2 + (1/6)*self.D[3,:]*tau**3
             collision_flag = self.collision_check(xf)
             if collision_flag is True:
                 Cs[i] = np.inf
             else:
-                Rs[i,:,:], Cs_err = self.forward_simulate(x0, self.D, tau)
+                Rs[i,:,:], Cs_err = self.forward_simulate(x0, J0[i,:,:], tau)
                 # The total cost of the 
-                Cs[i] = J0[i] + tau + Cs_err 
+                Cs[i] = np.sum(np.abs(J0[i,:,:])) + tau + Cs_err 
+        
+        return Rs, Cs
 
-    def forward_simulate(self, x0, D, tau):
+    def forward_simulate(self, x0, J0, tau):
         # TODO
         '''
         Given the desired trajectory run a forward simulation to identify
@@ -65,8 +77,6 @@ class successors(object):
         
 
         Input:
-        D = M X 4 X 3 np array of coeffecients [jerk, acceleration, velocity, position]
-            of the collision free trajectories
         x0 = 1 X 17 array of initial state [x0, v0, a0, q0, w0]
             p0 = 1 X 3 -- postion in m
             v0 = 1 X 3 -- velocity in m/s
@@ -76,38 +86,51 @@ class successors(object):
         tau = Duration of planner
 
         Output:
-        Rs = M X 3 X 3 np array of state at the end of the period after the simulation
+        Rs =  3 X 3 np array of state at the end of the period after the simulation
         err_cs = M X 1 np array of the cost of the trajectory based on the controller's
                  ability to follow the trajectory
         '''
+        #TODO update self.D
         t_final = tau
         initial_state  = {'x': tuple(x0[0:3]),
                           'v': tuple(x0[3:6]),
                           'q': tuple(x0[9:13]),
-                          'w': tuple(x0[13:17])}
+                          'w': tuple(x0[13:16])}
         
         quadrotor = Quadrotor(quad_params)
         my_se3_controller = SE3Control(quad_params)
+
         # Traj object has been created to main tain consistency with the simulator which
-        # needs the trajectory  to be an ibject with an update function'''
-        
+        # needs the trajectory  to be an ibject with an update function
+
+        self.traj.update_D(self.D)
+
         (sim_time, state, control, flat, exit) = simulate(initial_state,
                                                           quadrotor,  
                                                           my_se3_controller, 
                                                           self.traj,         
                                                           t_final)
         
-        if exit == 'Success: End reached.':
+        if exit.value == 'Timeout: Simulation end time reached.':
             err = state['x'] - flat['x']  # TODO check if order is stored in the same order in both dictionary
             err_cs = np.sum(np.absolute(err))
-            Rsx = state['x']
-            Rsv = state['v']
-            
-
+            Rsx = state['x'][-1]
+            Rsv = state['v'][-1]
+            Rsa = J0*tau + x0[6:9]
+            Rsq = state['q'][-1]
+            Rsw = state['w'][-1]
+            # pdb.set_trace()
+            Rsp = np.array([Rsx, Rsv, Rsa.reshape((3,))]).reshape((1,9))
+            Rst = np.concatenate([Rsq, Rsw]).reshape((1,7))
+            # pdb.set_trace()
+            Rs = np.append(Rsp,Rst)
+            # pdb.set_trace()
 
 
         else:
             err_cs = np.inf
+            Rs = None
+
         return Rs, err_cs
 
     def collision_check(self, x):
@@ -138,6 +161,10 @@ class trajectory(object):
              [jx0,jy0,jz0]]
         '''
         self.D = D
+        
+    def update_D(self,D):
+        self.D=D
+
 
     def update(self,t):
         
@@ -165,15 +192,45 @@ class trajectory(object):
         yaw = 0
         yaw_dot = 0
 
-        D = self.D
-
-        x       = np.concatenate(D[0,:] + D[1,:]*t + 0.5*D[2,:]*t**2 + (1/6)*D[3,:]*t**3)
-        x_dot   = np.concatenate(D[1,:] + D[2,:]*t + 0.5*D[3,:]*t**2)
-        x_ddot  = np.concatenate(D[2,:] + D[3,:]*t)
-        x_dddot = np.concatenate(D[3,:])
+        D=self.D
+        if t!=np.inf:
+            x       = D[0,:] + D[1,:]*t + 0.5*D[2,:]*t**2 + (1/6)*D[3,:]*t**3
+            x_dot   = D[1,:] + D[2,:]*t + 0.5*D[3,:]*t**2
+            x_ddot  = D[2,:] + D[3,:]*t
+            x_dddot = D[3,:]
+        else:
+            x=D[0,:]
 
         flat_output = { 'x':x, 'x_dot':x_dot, 'x_ddot':x_ddot, 'x_dddot':x_dddot, 'x_ddddot':x_ddddot,
                         'yaw':yaw, 'yaw_dot':yaw_dot}
         return flat_output
+
+
+if __name__ == "__main__":
+    # Choose a test example file. You should write your own example files too!
+    filename = '../util/test_maze.json'
+    # Videoname = 'MyMap.mp4'
+
+    # Load the test example.
+    file = Path(inspect.getsourcefile(lambda:0)).parent.resolve() / '..' / 'util' / filename
+    world = World.from_file(file)          # World boundary and obstacles.
+    start  = world.world['start']          # Start point, shape=(3,)
+    goal   = world.world['goal']           # Goal point, shape=(3,)
+    # This object defines the quadrotor dynamical model and should not be changed.
+    robot_radius = 0.25
+
+    #TODO: Check this if reqd
+    initial_state = {'x': start,
+				 'v': (0, 0, 0),
+				 'q': (0, 0, 0, 1), # [i,j,k,w]
+				 'w': (0, 0, 0)}
+
+    gs = successors(world)
+    x0 = np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
+    um = np.array([[10,10,10],[20,20,20]]).reshape((2,1,3))
+    tau = 1
+    rr, cc = gs.reachable(um,x0,tau)
+    print(rr)
+    print(cc)
 
 
