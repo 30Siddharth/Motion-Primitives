@@ -13,6 +13,8 @@ from flightsim.crazyflie_params import quad_params
 from proj1_3.code.occupancy_map import OccupancyMap
 from proj1_3.code.se3_control import SE3Control
 from pathlib import Path
+import multiprocessing
+
 
 
 
@@ -23,7 +25,8 @@ class successors(object):
         self.margin = 0.25 
         self.occ_map = OccupancyMap(world, self.resolution, self.margin)
         self.D = np.zeros((4,3))
-        self.traj = trajectory(self.D)
+   
+        
 
     def reachable(self, Um, x_init, tau):
         # TODO
@@ -48,27 +51,41 @@ class successors(object):
         '''
 
         N = Um.shape[0]
-        Rs = np.zeros((N,1,16))
-        Cs = np.zeros((N,1))
+        print(Um.shape)
         J0 = Um
         x0 = x_init
-        
+        process_arr=[]
+        Rs = np.zeros((N,1,16))
+        Cs = np.zeros((N,1))
+        manager = multiprocessing.Manager()
+        return_Rs = manager.dict()
+        return_cc=manager.dict()
+
         for i in range(N):
             collision_flag = False
             # TODO check for collision using occupancy map
-            self.D = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
-            xf = self.D[0,:] + self.D[1,:]*tau + 0.5*self.D[2,:]*tau**2 + (1/6)*self.D[3,:]*tau**3
+            D = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
+            xf = D[0,:] + D[1,:]*tau + 0.5*D[2,:]*tau**2 + (1/6)*D[3,:]*tau**3
             collision_flag = self.collision_check(xf)
             if collision_flag is True:
                 Cs[i] = np.inf
             else:
-                Rs[i,:,:], Cs_err = self.forward_simulate(x0, J0[i,:,:], tau)
+                #Rs[i,:,:], Cs_err =
                 # The total cost of the 
-                Cs[i] = np.sum(np.abs(J0[i,:,:])) + tau + Cs_err 
-        
-        return Rs, Cs
+                Cs[i] = np.sum(np.abs(J0[i,:,:])) + tau 
+                # self.forward_simulate(x0, J0[i,:,:], tau,D,i,Rs,Cs)
+                p = multiprocessing.Process(target=self.forward_simulate, args=(x0, J0[i,:,:], tau,D,Cs[i],return_Rs,return_cc,i))
+                process_arr.append(p)
+                p.start()
+             
+              
+        for j in range(len(process_arr)):
+            process_arr[j].join()
+       
+       
+        return return_Rs.values(), return_cc.values()
 
-    def forward_simulate(self, x0, J0, tau):
+    def forward_simulate(self, x0, J0, tau,D,cost,return_Rs,return_cc,i):
         # TODO
         '''
         Given the desired trajectory run a forward simulation to identify
@@ -102,13 +119,11 @@ class successors(object):
 
         # Traj object has been created to main tain consistency with the simulator which
         # needs the trajectory  to be an ibject with an update function
-
-        self.traj.update_D(self.D)
-
+        traj = trajectory(D)
         (sim_time, state, control, flat, exit) = simulate(initial_state,
                                                           quadrotor,  
                                                           my_se3_controller, 
-                                                          self.traj,         
+                                                          traj,         
                                                           t_final)
         
         if exit.value == 'Timeout: Simulation end time reached.':
@@ -130,8 +145,11 @@ class successors(object):
         else:
             err_cs = np.inf
             Rs = None
-
-        return Rs, err_cs
+  
+        return_Rs[i]=Rs
+        return_cc[i]=cost+err_cs
+        
+    
 
     def collision_check(self, x):
         '''

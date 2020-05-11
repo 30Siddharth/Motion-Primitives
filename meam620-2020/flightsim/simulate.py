@@ -16,7 +16,7 @@ class ExitStatus(Enum):
     OVER_SPIN    = 'Failure: Your quadrotor is out of control; it is spinning faster than 100 rad/s. The onboard IMU can only measure up to 52 rad/s (3000 deg/s).'
     FLY_AWAY     = 'Failure: Your quadrotor is out of control; it flew away with a position error greater than 20 meters.'
 
-def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminate=None,D):
+def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminate=None):
     """
     Perform a quadrotor simulation and return the numerical results.
 
@@ -229,7 +229,7 @@ class Quadrotor(object):
         def s_dot_fn(t, s):
             return self._s_dot_fn(t, s, T, M)
         s = Quadrotor._pack_state(state)
-        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s, first_step=t_step)
+        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s, first_step=t_step,vectorized=True)
         s = sol['y'][:,-1]
         state = Quadrotor._unpack_state(s)
 
