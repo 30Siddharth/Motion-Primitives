@@ -42,9 +42,9 @@ class motion_primitive:
         self.gs=gs
         self.discretize=9;
         self.start_state=  []
-        self.ux = np.linspace(-20, 20, self.discretize)
-        self.uy = np.linspace(-20, 20, self.discretize)  
-        self.uz = np.linspace(-20, 20, self.discretize)
+        self.ux = np.linspace(-10, 10, self.discretize)
+        self.uy = np.linspace(-10, 10, self.discretize)  
+        self.uz = np.linspace(-10, 10, self.discretize)
         self.motion_primitive=[]
         self.q = Q.PriorityQueue()
         self.end_state=end_state
@@ -73,10 +73,16 @@ class motion_primitive:
         generate motion primitive with forward simulation
         """
         N=self.discretize**3
-        self.motion_primitive=np.array(list(product(self.ux,self.uy,self.uz))).reshape((N,1,3))
+        n=self.discretize
+        for i in range(n):
+            for j in range(n):
+                for k in range(n):
+                    self.motion_primitive.append(np.array([self.ux[i],self.uy[j],self.uz[k]]).reshape(1,3))
+        self.motion_primitive=np.array(self.motion_primitive)
+        pdb.set_trace()
     
     def check_dynamics(self,state):
-        if all(i <=self.v_max for i in state[3:6]) and all(j <=self.a_max for j in state[6:9]):
+        if all(abs(i) <=self.v_max for i in state[3:6]) and all(abs(j) <=self.a_max for j in state[6:9]):
             return True
         else:
             return False
@@ -98,7 +104,7 @@ class motion_primitive:
                     print(cc[i])
                 else:
                     print("not feasible")
-            except:d 
+            except:
                 print('non unique element')
         return rr,cc
         
@@ -195,7 +201,7 @@ if __name__ == "__main__":
 
 
     # Returns a motion primitive array"
-    filename = '../util/test_empty.json'
+    filename = '../util/test_maze.json'
     # Videoname = 'MyMap.mp4'
 
     # Load the test example.
@@ -217,8 +223,8 @@ if __name__ == "__main__":
     x0 = np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
     um = np.array([[10,10,10],[20,20,20]]).reshape((2,1,3))
     tau =0.1
-    max_v=2.5
-    max_a=10
+    max_v=1
+    max_a=1
 
    
     
@@ -238,7 +244,7 @@ if __name__ == "__main__":
 
     i=0
     #while motion_primitive.q.qsize() > 0:
-    while i<20:
+    while i<30:
         node=motion_primitive.q.get()
         node=np.array(node)
         motion_primitive.update_start_state(node[1])
@@ -246,7 +252,7 @@ if __name__ == "__main__":
         print(node[1])
         if graph_search.generate_nodes(node[1],cc,rr,motion_primitive):
             break
-        print("Iterator {} Length {}".format(i,len(graph_search.node_q)))
+        print("Iterator {} Length {}".format(i,motion_primitive.q.qsize()))
         i=i+1
 
     #path =nx.shortest_path(graph_search.G,tuple(graph_search.start_state,tuple(node),weight='cost')
