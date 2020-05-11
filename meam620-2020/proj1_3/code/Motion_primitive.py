@@ -98,7 +98,7 @@ class motion_primitive:
                     print(cc[i])
                 else:
                     print("not feasible")
-            except:
+            except:d 
                 print('non unique element')
         return rr,cc
         
