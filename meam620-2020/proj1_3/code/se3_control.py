@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 import math as m
+import pdb
 
 
 class SE3Control(object):
@@ -112,6 +113,7 @@ class SE3Control(object):
                 cmd_moment, N*m (for debugging; not used by simulator)
                 cmd_q, quaternion [i,j,k,w] (for laboratory; not used by simulator)
         """
+      
         cmd_motor_speeds = np.zeros((4,))
         cmd_thrust = 0
         cmd_moment = np.zeros((3,))
@@ -121,21 +123,24 @@ class SE3Control(object):
         # print('Yaw: ', flat_output['yaw'])
 
         # STUDENT CODE HERE
-        if (flat_output['x'] == np.array([0,0,4])).all():
-            print('!')       
+        
         ## **** Computing U1 *****
 
         # Rotation
+        state['x']=state['x'].reshape(729,3)
+        state['v']=state['v'].reshape(729,3)
+        state['q']=state['q'].reshape(729,4)
+        state['w']=state['w'].reshape(729,3)
         q = state['q']
         R = Rotation.from_quat(q).as_matrix()  # <---------------------<< Identifying Rotation
         b3 = np.matmul(R,np.array([0,0,1]))
         
-
+   
         # Desired Acceleration
         err_v = state['v'] - flat_output['x_dot']
         err_x = state['x'] - flat_output['x']
-        r_des = flat_output['x_ddot'] - self.K_d*(state['v'] - flat_output['x_dot']) - self.K_p*(state['x'] - flat_output['x'])
-        r_des = np.diagonal(r_des)
+        r_des = flat_output['x_ddot'] - np.matmul(np.array(state['v'] - flat_output['x_dot']),np.array(self.K_p)) - np.matmul(np.array(state['x'] - flat_output['x']),np.array(self.K_d))
+        #r_des = np.diagonal(r_des)
     
         # Required Force
         F_des = self.mass* (r_des + np.array([0,0,self.g]))
@@ -145,28 +150,31 @@ class SE3Control(object):
                 # F_des = self.mass*(np.array([0,0,self.g]))
         
         # Required sum of Forces
-        u1 = np.dot(b3,F_des)
+        u1 = np.matmul(F_des,b3.T).diagonal()
         
 
         ## **** Computing U2 *****
 
         # Required Yaw Rotation
-        o = np.array([0,0,0])
+        o = np.zeros(F_des.shape)
         if (F_des == o).all():
-            b3_des = np.array([0,0,1])
+            b3_des=np.zeros(F_des.shape)
+            b3_des[:,2] = 1
         else:
             b3_des = F_des/np.linalg.norm(F_des)        
-        a_psi = np.array([m.cos(flat_output['yaw']), m.sin(flat_output['yaw']), 0])
-        b2_des = np.cross(b3_des,a_psi)
+        
+        a_psi = np.array([np.cos(np.array(flat_output['yaw'])), np.sin(np.array(flat_output['yaw'])), np.zeros((729,))]).T
+        b2_des = np.cross(b3_des,a_psi,axisa=1,axisb=1)
         b2_des = b2_des/np.linalg.norm(b2_des)
         b1_des = np.cross(b2_des,b3_des)
         # b1_des = b1_des/np.linalg.norm(b1_des)
-        R_des = np.array([b1_des,b2_des, b3_des]).T
+        R_des = np.array([b1_des.T,b2_des.T, b3_des.T]).T
 
+      
         # Error in rotation
-        err_rot = 0.5*(np.matmul(R_des.T,R) - np.matmul(R.T,R_des))
+        err_rot = 0.5*(np.matmul(R_des.transpose(0,2,1),R) - np.matmul(R.transpose(0,2,1),R_des))
         # print(err_rot)
-        err_rot = np.array([-err_rot[1,2], err_rot[0,2], -err_rot[0,1]])
+        err_rot = np.array([-err_rot[:,1,2], err_rot[:,0,2], -err_rot[:,0,1]]).T
         # err_rot = np.array([err_rot[1,0], -err_rot[2,0], err_rot[2,1]])
         # np.where(err_rot < 10e-6, 0, err_rot)
         
@@ -178,26 +186,23 @@ class SE3Control(object):
 
         # Computing the Input forces
         # print('err Rot', err_rot)
-        U2 = self.inertia*(-self.K_rot*err_rot - self.K_omega*err_omega)   #<---------------------<<<
-        U2 = np.array([U2[0,0], U2[1,1], U2[2,2]])
+        U2 = np.matmul(-np.matmul(err_rot,self.K_rot) - np.matmul(err_omega,self.K_omega),self.inertia)  #<---------------------<<<
+        U2 = np.array([U2[:,0], U2[:,1], U2[:,2]]).T
 
         
         # Total Input 
-        U = np.array([u1,U2[0],U2[1],U2[2]])
+        U = np.array([u1,U2[:,0],U2[:,1],U2[:,2]])
         forces = np.matmul(self.Gamma_inv,U)
-        for i,_ in enumerate(forces):
-            if forces[i] < 0:
-                forces[i]=0
+        forces= np.where(forces <0,0, forces)
         # print(state['x'],'X_state')
 
         cmd_thrust = u1
         cmd_moment = U2
         cmd_motor_speeds = forces/self.k_thrust
         cmd_motor_speeds = np.sqrt(cmd_motor_speeds)
-        for i,_ in enumerate(cmd_motor_speeds):
-            if cmd_motor_speeds[i] > self.rotor_speed_max:
-                cmd_motor_speeds[i] = self.rotor_speed_max
+        cmd_motor_speeds= np.where(cmd_motor_speeds >self.rotor_speed_max,self.rotor_speed_max, cmd_motor_speeds)
 
+        
         cmd_q = Rotation.from_matrix(R_des).as_quat()
         # print('!')
 

@@ -60,11 +60,12 @@ class successors(object):
         manager = multiprocessing.Manager()
         return_Rs = manager.dict()
         return_cc=manager.dict()
-
+        D=np.zeros((N,4,3))
+        pdb.set_trace()
         for i in range(N):
             collision_flag = False
             # TODO check for collision using occupancy map
-            D = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
+            D[i,:,:] = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
             xf = D[0,:] + D[1,:]*tau + 0.5*D[2,:]*tau**2 + (1/6)*D[3,:]*tau**3
             collision_flag = self.collision_check(xf)
             if collision_flag is True:
@@ -72,20 +73,20 @@ class successors(object):
             else:
                 #Rs[i,:,:], Cs_err =
                 # The total cost of the 
-                Cs[i] = np.sum(np.abs(J0[i,:,:])) + tau 
+                Cs[i] = np.sum(np.abs(J0[i,:,:]))
                 # self.forward_simulate(x0, J0[i,:,:], tau,D,i,Rs,Cs)
-                p = multiprocessing.Process(target=self.forward_simulate, args=(x0, J0[i,:,:], tau,D,Cs[i],return_Rs,return_cc,i))
-                process_arr.append(p)
-                p.start()
-             
-              
-        for j in range(len(process_arr)):
-            process_arr[j].join()
+                # p = multiprocessing.Process(target=self.forward_simulate, args=(x0, J0[i,:,:], tau,D,Cs[i],return_Rs,return_cc,i))
+                # process_arr.append(p)
+                # p.start()
+        #pdb.set_trace()     
+        rr,cc=self.forward_simulate(x0, J0, tau,D,Rs,Cs)     
+        # for j in range(len(process_arr)):
+        #     process_arr[j].join()
        
        
-        return return_Rs.values(), return_cc.values()
+        return rr,cc
 
-    def forward_simulate(self, x0, J0, tau,D,cost,return_Rs,return_cc,i):
+    def forward_simulate(self, x0, J0, tau,D,return_Rs,return_cc):
         # TODO
         '''
         Given the desired trajectory run a forward simulation to identify
@@ -107,6 +108,7 @@ class successors(object):
         err_cs = M X 1 np array of the cost of the trajectory based on the controller's
                  ability to follow the trajectory
         '''
+        #pdb.set_trace()
         #TODO update self.D
         t_final = tau
         initial_state  = {'x': tuple(x0[0:3]),
@@ -125,8 +127,8 @@ class successors(object):
                                                           my_se3_controller, 
                                                           traj,         
                                                           t_final)
-        
-        if exit.value == 'Timeout: Simulation end time reached.':
+
+        if True:
             err = state['x'] - flat['x']  # TODO check if order is stored in the same order in both dictionary
             err_cs = np.sum(np.absolute(err))
             Rsx = state['x'][-1]
@@ -135,10 +137,10 @@ class successors(object):
             Rsq = state['q'][-1]
             Rsw = state['w'][-1]
             # pdb.set_trace()
-            Rsp = np.array([Rsx, Rsv, Rsa.reshape((3,))]).reshape((1,9))
-            Rst = np.concatenate([Rsq, Rsw]).reshape((1,7))
+            Rsp = np.array([Rsx, Rsv, Rsa.reshape((729,3,))]).reshape((729,1,9))
+            Rst = np.concatenate([Rsq, Rsw],axis=1).reshape((729,1,7))
             # pdb.set_trace()
-            Rs = np.append(Rsp,Rst)
+            Rs = np.concatenate([Rsp,Rst],axis=2).reshape(729,1,16)
             # pdb.set_trace()
 
 
@@ -146,9 +148,9 @@ class successors(object):
             err_cs = np.inf
             Rs = None
   
-        return_Rs[i]=Rs
-        return_cc[i]=cost+err_cs
-        
+        return_Rs=Rs
+        return_cc=return_cc
+        return return_Rs, return_cc
     
 
     def collision_check(self, x):
@@ -201,24 +203,25 @@ class trajectory(object):
                 yaw,      yaw angle, rad
                 yaw_dot,  yaw rate, rad/s
         '''
-        
-        x        = np.zeros((3,))
-        x_dot    = np.zeros((3,))
-        x_ddot   = np.zeros((3,))
-        x_dddot  = np.zeros((3,))
-        x_ddddot = np.zeros((3,))
-        yaw = 0
-        yaw_dot = 0
+        D=np.array(self.D)
+       
+        x        = np.zeros((D.shape[0],3,))
+        x_dot    = np.zeros((D.shape[0],3,))
+        x_ddot   = np.zeros((D.shape[0],3,))
+        x_dddot  = np.zeros((D.shape[0],3,))
+        x_ddddot = np.zeros((D.shape[0],3,))
+        yaw = np.zeros((D.shape[0],))
+        yaw_dot = np.zeros((D.shape[0],3))
 
-        D=self.D
+       
         if t!=np.inf:
-            x       = D[0,:] + D[1,:]*t + 0.5*D[2,:]*t**2 + (1/6)*D[3,:]*t**3
-            x_dot   = D[1,:] + D[2,:]*t + 0.5*D[3,:]*t**2
-            x_ddot  = D[2,:] + D[3,:]*t
-            x_dddot = D[3,:]
+            x       = (D[:,0,:] + D[:,1,:]*t + 0.5*D[:,2,:]*t**2 + (1/6)*D[:,3,:]*t**3)
+            x_dot   = (D[:,1,:] + D[:,2,:]*t + 0.5*D[:,3,:]*t**2)
+            x_ddot  = (D[:,2,:] + D[:,3,:]*t)
+            x_dddot = (D[:,3,:])
         else:
-            x=D[0,:]
-
+            x=D[:,0,:]
+        pdb.set_trace()
         flat_output = { 'x':x, 'x_dot':x_dot, 'x_ddot':x_ddot, 'x_dddot':x_dddot, 'x_ddddot':x_ddddot,
                         'yaw':yaw, 'yaw_dot':yaw_dot}
         return flat_output

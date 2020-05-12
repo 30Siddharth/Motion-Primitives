@@ -5,6 +5,7 @@ import numpy as np
 from numpy.linalg import inv, norm
 import scipy.integrate
 from scipy.spatial.transform import Rotation
+import pdb
 
 class ExitStatus(Enum):
     """ Exit status values indicate the reason for simulation termination. """
@@ -69,19 +70,25 @@ def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminat
     else:                    # Custom exit.
         normal_exit = terminate
 
-    t_step = 1/500 # in seconds, determines control loop frequency
+    t_step = 1/100 # in seconds, determines control loop frequency
 
+    
     time    = [0]
-    state   = [copy.deepcopy(initial_state)]
-    flat    = [trajectory.update(time[-1],D)]
+    state_   = copy.deepcopy(initial_state)
+    state={}
+    state['x']=np.array([state_['x']]*729).reshape(729,3)
+    state['v']=np.array([state_['v']]*729).reshape(729,3)
+    state['q']=np.array([state_['q']]*729).reshape(729,4)
+    state['w']=np.array([state_['w']]*729).reshape(729,3)
+    state=[state]
+    flat    = [trajectory.update(time[-1])]
+  
     control = [controller.update(time[-1], state[-1], flat[-1])]
+    # pdb.set_trace()
 
     exit_status = None
     while True:
-        exit_status = exit_status or safety_exit(state[-1], flat[-1], control[-1])
-        exit_status = exit_status or normal_exit(time[-1], state[-1])
-        exit_status = exit_status or time_exit(time[-1], t_final)
-        if exit_status:
+        if time[-1]>=t_final:
             break
         time.append(time[-1] + t_step)
         state.append(quadrotor.step(state[-1], control[-1]['cmd_motor_speeds'], t_step))
@@ -120,16 +127,16 @@ def quat_dot(quat, omega):
 
     """
     # Adapted from "Quaternions And Dynamics" by Basile Graf.
-    (q0, q1, q2, q3) = (quat[0], quat[1], quat[2], quat[3])
+    (q0, q1, q2, q3) = (quat[0,:], quat[1,:], quat[2,:], quat[3,:])
     G = np.array([[ q3,  q2, -q1, -q0],
                   [-q2,  q3,  q0, -q1],
                   [ q1, -q0,  q3, -q2]])
-    quat_dot = 0.5 * G.T @ omega
+    quat_dot = 0.5 * np.matmul(G.T , omega).diagonal()
     # Augment to maintain unit quaternion.
-    quat_err = np.sum(quat**2) - 1
+    quat_err = np.sum(quat**2,axis =0) - 1
     quat_err_grad = 2 * quat
-    quat_dot = quat_dot - quat_err * quat_err_grad
-    return quat_dot
+    quat_dot = quat_dot - np.multiply(quat_err , quat_err_grad).T
+    return quat_dot.T
 
 
 def traj_end_exit(initial_state, trajectory):
@@ -217,24 +224,27 @@ class Quadrotor(object):
         """
 
         # The true motor speeds can not fall below min and max speeds.
+        
         rotor_speeds = np.clip(cmd_rotor_speeds, self.rotor_speed_min, self.rotor_speed_max)
 
         # Compute individual rotor thrusts and net thrust and net moment.
         rotor_thrusts = self.k_thrust * rotor_speeds**2
         TM = self.to_TM @ rotor_thrusts
-        T = TM[0]
-        M = TM[1:4]
+        T = TM[0,:]
+        M = TM[1:4,:]
 
         # Form autonomous ODE for constant inputs and integrate one time step.
         def s_dot_fn(t, s):
             return self._s_dot_fn(t, s, T, M)
         s = Quadrotor._pack_state(state)
-        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s, first_step=t_step,vectorized=True)
-        s = sol['y'][:,-1]
-        state = Quadrotor._unpack_state(s)
+    
+        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s.reshape(13*729,), first_step=t_step,vectorized=True)
+       # pdb.set_trace()
+        s_ = sol['y'][:,-1]
+        state = Quadrotor._unpack_state(s_)
 
         # Re-normalize unit quaternion.
-        state['q'] = state['q'] / norm(state['q'])
+        state['q'] = state['q'].T / norm(state['q'])
 
         return state
 
@@ -245,28 +255,28 @@ class Quadrotor(object):
         """
 
         state = Quadrotor._unpack_state(s)
-
+       
         # Position derivative.
         x_dot = state['v']
 
         # Velocity derivative.
         F = u1 * Quadrotor.rotate_k(state['q'])
-        v_dot = (self.weight + F) / self.mass
+        v_dot = (F.T+self.weight) / self.mass
 
         # Orientation derivative.
         q_dot = quat_dot(state['q'], state['w'])
 
         # Angular velocity derivative.
         omega = state['w']
-        omega_hat = Quadrotor.hat_map(omega)
-        w_dot = self.inv_inertia @ (u2 - omega_hat @ (self.inertia @ omega))
-
+        w_dot = self.inv_inertia @(u2 - np.cross(omega ,np.matmul(self.inertia,omega),axisa=0,axisb=0).T)
+        
+                                                    
         # Pack into vector of derivatives.
-        s_dot = np.zeros((13,))
-        s_dot[0:3]   = x_dot
-        s_dot[3:6]   = v_dot
-        s_dot[6:10]  = q_dot
-        s_dot[10:13] = w_dot
+        s_dot = np.zeros((13,729))
+        s_dot[0:3,:]   = x_dot
+        s_dot[3:6,:]   = v_dot.T
+        s_dot[6:10,:]  = q_dot
+        s_dot[10:13,:] = w_dot
 
         return s_dot
 
@@ -276,9 +286,9 @@ class Quadrotor(object):
         Rotate the unit vector k by quaternion q. This is the third column of
         the rotation matrix associated with a rotation by q.
         """
-        return np.array([  2*(q[0]*q[2]+q[1]*q[3]),
-                           2*(q[1]*q[2]-q[0]*q[3]),
-                         1-2*(q[0]**2  +q[1]**2)    ])
+        return np.array([  2*(q[0,:]*q[2,:]+q[1,:]*q[3,:]),
+                           2*(q[1,:]*q[2,:]-q[0,:]*q[3,:]),
+                         1-2*(q[0,:]**2  +q[1,:]**2)    ])
 
     @classmethod
     def hat_map(cls, s):
@@ -294,11 +304,12 @@ class Quadrotor(object):
         """
         Convert a state dict to Quadrotor's private internal vector representation.
         """
-        s = np.zeros((13,))
-        s[0:3]   = state['x']
-        s[3:6]   = state['v']
-        s[6:10]  = state['q']
-        s[10:13] = state['w']
+       # pdb.set_trace()
+        s = np.zeros((13,state['x'].shape[0]))
+        s[0:3,:]   = state['x'].T
+        s[3:6,:]   = state['v'].T
+        s[6:10,:]  = state['q'].T
+        s[10:13,:] = state['w'].T
         return s
 
     @classmethod
@@ -306,5 +317,6 @@ class Quadrotor(object):
         """
         Convert Quadrotor's private internal vector representation to a state dict.
         """
-        state = {'x':s[0:3], 'v':s[3:6], 'q':s[6:10], 'w':s[10:13]}
+        s=s.reshape(13,729)
+        state = {'x':s[0:3,:], 'v':s[3:6,:], 'q':s[6:10,:], 'w':s[10:13,:]}
         return state

@@ -62,6 +62,7 @@ class motion_primitive:
         self.u_max=u
     
     def generate_heuristic(self,start_state,end_state):
+  
         cost=(start_state[0]-end_state[0])**2+(start_state[1]-end_state[1])**2+(start_state[2]-end_state[2])**2 
         return cost
  
@@ -78,8 +79,10 @@ class motion_primitive:
             for j in range(n):
                 for k in range(n):
                     self.motion_primitive.append(np.array([self.ux[i],self.uy[j],self.uz[k]]).reshape(1,3))
-        self.motion_primitive=np.array(self.motion_primitive)
         pdb.set_trace()
+        self.motion_primitive=np.array(self.motion_primitive)
+
+      
     
     def check_dynamics(self,state):
         if all(abs(i) <=self.v_max for i in state[3:6]) and all(abs(j) <=self.a_max for j in state[6:9]):
@@ -89,23 +92,22 @@ class motion_primitive:
         
     
     def get_successors(self):
-        print(self.motion_primitive.shape)
+        
         rr, cc = gs.reachable(self.motion_primitive,self.start_state,self.dt)
-        rr=np.array(rr)
-        cc=np.array(cc)
         N=self.discretize**3
-     
+        rr=np.array(rr).reshape(N,16)
+        cc=np.array(cc)
+       
+        pdb.set_trace()
 
         for i in range(N):
             try:
                 if self.check_dynamics(rr[i,:]):
-                    cc[i]=10*self.generate_heuristic(rr[i,0:3],self.end_state[0:3])
+                    cc[i]=cc[i]+10*self.generate_heuristic(rr[i,0:3],self.end_state[0:3])
                     self.q.put((cc[i],tuple(rr[i])))
-                    print(cc[i])
-                else:
-                    print("not feasible")
+                 
             except:
-                print('non unique element')
+                i=0
         return rr,cc
         
 
@@ -201,7 +203,7 @@ if __name__ == "__main__":
 
 
     # Returns a motion primitive array"
-    filename = '../util/test_maze.json'
+    filename = '../util/test_empty.json'
     # Videoname = 'MyMap.mp4'
 
     # Load the test example.
@@ -211,6 +213,10 @@ if __name__ == "__main__":
     goal_node   = world.world['goal']           # Goal point, shape=(3,)
     # This object defines the quadrotor dynamical model and should not be changed.
     robot_radius = 0.25
+
+    start_node[0]=0
+    start_node[1]=0
+    start_node[2]=0
 
     goal_node[0]=2
     goal_node[1]=2
@@ -236,15 +242,17 @@ if __name__ == "__main__":
     motion_primitive.generate_motion_primitive()
     motion_primitive.update_start_state(initial_state)
     rr,cc=motion_primitive.get_successors()
-    graph_search.generate_nodes(start_node,cc,rr,motion_primitive)
     finish=time.perf_counter()
     print('time completed ',round(finish-start,2))
+    graph_search.generate_nodes(start_node,cc,rr,motion_primitive)
+   
+ 
  
     
 
     i=0
     #while motion_primitive.q.qsize() > 0:
-    while i<30:
+    while i<1000:
         node=motion_primitive.q.get()
         node=np.array(node)
         motion_primitive.update_start_state(node[1])
