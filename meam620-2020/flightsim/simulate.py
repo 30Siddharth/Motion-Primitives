@@ -17,7 +17,7 @@ class ExitStatus(Enum):
     OVER_SPIN    = 'Failure: Your quadrotor is out of control; it is spinning faster than 100 rad/s. The onboard IMU can only measure up to 52 rad/s (3000 deg/s).'
     FLY_AWAY     = 'Failure: Your quadrotor is out of control; it flew away with a position error greater than 20 meters.'
 
-def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminate=None):
+def simulate(initial_state, quadrotor, controller, trajectory, t_final,occupancy_map, terminate=None):
     """
     Perform a quadrotor simulation and return the numerical results.
 
@@ -70,9 +70,9 @@ def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminat
     else:                    # Custom exit.
         normal_exit = terminate
 
-    t_step = 1/100 # in seconds, determines control loop frequency
+    t_step = 1/50 # in seconds, determines control loop frequency
 
-    
+    cost=np.zeros(729,)
     time    = [0]
     state_   = copy.deepcopy(initial_state)
     state={}
@@ -83,23 +83,52 @@ def simulate(initial_state, quadrotor, controller, trajectory, t_final, terminat
     state=[state]
     flat    = [trajectory.update(time[-1])]
   
-    control = [controller.update(time[-1], state[-1], flat[-1])]
-    # pdb.set_trace()
+  #  control = [controller.update(time[-1], state[-1], flat[-1])]
+ #    pdb.set_trace()
 
     exit_status = None
     while True:
         if time[-1]>=t_final:
             break
         time.append(time[-1] + t_step)
-        state.append(quadrotor.step(state[-1], control[-1]['cmd_motor_speeds'], t_step))
+       # pdb.set_trace()
+        #state.append(quadrotor.step(state[-1], control[-1]['cmd_motor_speeds'], t_step))
+        #pdb.set_trace()
         flat.append(trajectory.update(time[-1]))
-        control.append(controller.update(time[-1], state[-1], flat[-1]))
+        #control.append(controller.update(time[-1], state[-1], flat[-1]))
+        collision_check(occupancy_map,flat[-1]['x'],cost)
 
+        
+
+   # pdb.set_trace()
+    control=[]
+    state=[]
     time    = np.array(time, dtype=float)
-    state   = merge_dicts(state)
-    control = merge_dicts(control)
+    #state   = merge_dicts(state)
+    #control = merge_dicts(control)
     flat    = merge_dicts(flat)
-    return (time, state, control, flat, exit_status)
+    return (time, state, control, flat, exit_status,cost)
+  
+def collision_check(occ_map,x,cost):
+    '''
+    Given a point in metric coordinates, identify if it is collision free
+    
+    Input:
+    x = np array 3 X 1 of the (x,y,z) positions
+    
+    Ouput:
+    Flag: True or False based on collision
+    '''
+   
+    idx = occ_map.metric_to_index(x)
+   
+   
+    for i in range(x.shape[0]):
+        if occ_map.map[idx[i][0],idx[i][1],idx[i][2]]:
+            cost[i]=np.inf
+          
+   
+
 
 def merge_dicts(dicts_in):
     """
@@ -131,7 +160,8 @@ def quat_dot(quat, omega):
     G = np.array([[ q3,  q2, -q1, -q0],
                   [-q2,  q3,  q0, -q1],
                   [ q1, -q0,  q3, -q2]])
-    quat_dot = 0.5 * np.matmul(G.T , omega).diagonal()
+    # pdb.set_trace()
+    quat_dot = 0.5 * np.matmul(G.transpose(2,1,0) , omega).diagonal()
     # Augment to maintain unit quaternion.
     quat_err = np.sum(quat**2,axis =0) - 1
     quat_err_grad = 2 * quat
@@ -224,7 +254,7 @@ class Quadrotor(object):
         """
 
         # The true motor speeds can not fall below min and max speeds.
-        
+       # pdb.set_trace()
         rotor_speeds = np.clip(cmd_rotor_speeds, self.rotor_speed_min, self.rotor_speed_max)
 
         # Compute individual rotor thrusts and net thrust and net moment.
@@ -236,12 +266,17 @@ class Quadrotor(object):
         # Form autonomous ODE for constant inputs and integrate one time step.
         def s_dot_fn(t, s):
             return self._s_dot_fn(t, s, T, M)
-        s = Quadrotor._pack_state(state)
-    
-        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s.reshape(13*729,), first_step=t_step,vectorized=True)
+        s_ = Quadrotor._pack_state(state)
+       
+        s=s_
        # pdb.set_trace()
+        sol = scipy.integrate.solve_ivp(s_dot_fn, (0, t_step), s.reshape(13*729,), first_step=t_step)
+     
         s_ = sol['y'][:,-1]
-        state = Quadrotor._unpack_state(s_)
+        
+       # pdb.set_trace()
+        
+        state = Quadrotor._unpack_state_1(s_)
 
         # Re-normalize unit quaternion.
         state['q'] = state['q'].T / norm(state['q'])
@@ -253,8 +288,9 @@ class Quadrotor(object):
         Compute derivative of state for quadrotor given fixed control inputs as
         an autonomous ODE.
         """
-
+       
         state = Quadrotor._unpack_state(s)
+      
        
         # Position derivative.
         x_dot = state['v']
@@ -272,12 +308,14 @@ class Quadrotor(object):
         
                                                     
         # Pack into vector of derivatives.
-        s_dot = np.zeros((13,729))
-        s_dot[0:3,:]   = x_dot
-        s_dot[3:6,:]   = v_dot.T
-        s_dot[6:10,:]  = q_dot
-        s_dot[10:13,:] = w_dot
-
+       
+        s_dot = np.zeros((729,13))
+        s_dot[:,0:3]   = x_dot.T
+        s_dot[:,3:6]   = v_dot
+        s_dot[:,6:10]  = q_dot.T
+        s_dot[:,10:13] = w_dot.T
+        #pdb.set_trace()
+        s_dot=s_dot.reshape(13*729,)
         return s_dot
 
     @classmethod
@@ -305,11 +343,11 @@ class Quadrotor(object):
         Convert a state dict to Quadrotor's private internal vector representation.
         """
        # pdb.set_trace()
-        s = np.zeros((13,state['x'].shape[0]))
-        s[0:3,:]   = state['x'].T
-        s[3:6,:]   = state['v'].T
-        s[6:10,:]  = state['q'].T
-        s[10:13,:] = state['w'].T
+        s = np.zeros((state['x'].shape[0],13))
+        s[:,0:3]   = state['x']
+        s[:,3:6]   = state['v']
+        s[:,6:10]  = state['q']
+        s[:,10:13] = state['w']
         return s
 
     @classmethod
@@ -317,6 +355,21 @@ class Quadrotor(object):
         """
         Convert Quadrotor's private internal vector representation to a state dict.
         """
-        s=s.reshape(13,729)
-        state = {'x':s[0:3,:], 'v':s[3:6,:], 'q':s[6:10,:], 'w':s[10:13,:]}
+        #pdb.set_trace()
+        s_=s
+        s=s.reshape(729,13)
+        state = {'x':s[:,0:3].T, 'v':s[:,3:6].T, 'q':s[:,6:10].T, 'w':s[:,10:13].T}
+     
+        return state
+
+    @classmethod
+    def _unpack_state_1(cls, s):
+        """
+        Convert Quadrotor's private internal vector representation to a state dict.
+        """
+        #pdb.set_trace()
+        s_=s
+        s=s.reshape(729,13)
+        state = {'x':s[:,0:3], 'v':s[:,3:6], 'q':s[:,6:10], 'w':s[:,10:13]}
+     
         return state

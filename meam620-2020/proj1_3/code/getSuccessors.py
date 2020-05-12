@@ -51,7 +51,7 @@ class successors(object):
         '''
 
         N = Um.shape[0]
-        print(Um.shape)
+       
         J0 = Um
         x0 = x_init
         process_arr=[]
@@ -61,7 +61,7 @@ class successors(object):
         return_Rs = manager.dict()
         return_cc=manager.dict()
         D=np.zeros((N,4,3))
-        pdb.set_trace()
+        #pdb.set_trace()
         for i in range(N):
             collision_flag = False
             # TODO check for collision using occupancy map
@@ -70,20 +70,16 @@ class successors(object):
             collision_flag = self.collision_check(xf)
             if collision_flag is True:
                 Cs[i] = np.inf
+                
             else:
-                #Rs[i,:,:], Cs_err =
-                # The total cost of the 
                 Cs[i] = np.sum(np.abs(J0[i,:,:]))
-                # self.forward_simulate(x0, J0[i,:,:], tau,D,i,Rs,Cs)
-                # p = multiprocessing.Process(target=self.forward_simulate, args=(x0, J0[i,:,:], tau,D,Cs[i],return_Rs,return_cc,i))
-                # process_arr.append(p)
-                # p.start()
+               
         #pdb.set_trace()     
         rr,cc=self.forward_simulate(x0, J0, tau,D,Rs,Cs)     
         # for j in range(len(process_arr)):
         #     process_arr[j].join()
        
-       
+        #pdb.set_trace()
         return rr,cc
 
     def forward_simulate(self, x0, J0, tau,D,return_Rs,return_cc):
@@ -122,34 +118,35 @@ class successors(object):
         # Traj object has been created to main tain consistency with the simulator which
         # needs the trajectory  to be an ibject with an update function
         traj = trajectory(D)
-        (sim_time, state, control, flat, exit) = simulate(initial_state,
+        (sim_time, state, control, flat, exit,col_c) = simulate(initial_state,
                                                           quadrotor,  
                                                           my_se3_controller, 
                                                           traj,         
-                                                          t_final)
+                                                          t_final,self.occ_map)
 
+       # pdb.set_trace()
         if True:
-            err = state['x'] - flat['x']  # TODO check if order is stored in the same order in both dictionary
+            err = np.array(flat['x'][-1].shape)  # TODO check if order is stored in the same order in both dictionary
             err_cs = np.sum(np.absolute(err))
-            Rsx = state['x'][-1]
-            Rsv = state['v'][-1]
-            Rsa = J0*tau + x0[6:9]
-            Rsq = state['q'][-1]
-            Rsw = state['w'][-1]
+            Rsx = flat['x'][-1]
+            Rsv = flat['x_dot'][-1]
+            # Rsx=state['x'][-1]
+            # Rsv=state['v'][-1]
+            Rsa = flat['x_ddot'][-1].reshape(729,3)
+            Rsq = np.zeros((729,4))
+            Rsw = np.zeros((729,3))
             # pdb.set_trace()
-            Rsp = np.array([Rsx, Rsv, Rsa.reshape((729,3,))]).reshape((729,1,9))
-            Rst = np.concatenate([Rsq, Rsw],axis=1).reshape((729,1,7))
-            # pdb.set_trace()
-            Rs = np.concatenate([Rsp,Rst],axis=2).reshape(729,1,16)
+            Rs=np.hstack((Rsx,Rsv,Rsa,Rsq,Rsw))
             # pdb.set_trace()
 
 
         else:
             err_cs = np.inf
             Rs = None
-  
+       # print(Rs)
+        # pdb.set_trace()
         return_Rs=Rs
-        return_cc=return_cc
+        return_cc=return_cc+err_cs+col_c.reshape(729,1)
         return return_Rs, return_cc
     
 
@@ -221,7 +218,7 @@ class trajectory(object):
             x_dddot = (D[:,3,:])
         else:
             x=D[:,0,:]
-        pdb.set_trace()
+        #pdb.set_trace()
         flat_output = { 'x':x, 'x_dot':x_dot, 'x_ddot':x_ddot, 'x_dddot':x_dddot, 'x_ddddot':x_ddddot,
                         'yaw':yaw, 'yaw_dot':yaw_dot}
         return flat_output

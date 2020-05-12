@@ -127,10 +127,12 @@ class SE3Control(object):
         ## **** Computing U1 *****
 
         # Rotation
-        state['x']=state['x'].reshape(729,3)
-        state['v']=state['v'].reshape(729,3)
-        state['q']=state['q'].reshape(729,4)
-        state['w']=state['w'].reshape(729,3)
+        # pdb.set_trace()
+        state['x']=state['x'].reshape((729,3))
+        state['v']=state['v'].reshape((729,3))
+        state['q']=state['q'].reshape((729,4))
+        state['w']=state['w'].reshape((729,3))
+        #pdb.set_trace()
         q = state['q']
         R = Rotation.from_quat(q).as_matrix()  # <---------------------<< Identifying Rotation
         b3 = np.matmul(R,np.array([0,0,1]))
@@ -205,9 +207,11 @@ class SE3Control(object):
         
         cmd_q = Rotation.from_matrix(R_des).as_quat()
         # print('!')
+       
 
         control_input = {'cmd_motor_speeds':cmd_motor_speeds,
                          'cmd_thrust':cmd_thrust,
                          'cmd_moment':cmd_moment,
                          'cmd_q':cmd_q}
+        #pdb.set_trace()
         return control_input

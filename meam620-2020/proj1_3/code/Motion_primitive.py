@@ -28,6 +28,7 @@ from itertools import product
 import time
 import pdb
 import queue as Q
+import pandas as pd  
   
 
 
@@ -64,6 +65,9 @@ class motion_primitive:
     def generate_heuristic(self,start_state,end_state):
   
         cost=(start_state[0]-end_state[0])**2+(start_state[1]-end_state[1])**2+(start_state[2]-end_state[2])**2 
+        
+        if cost<20:
+            cost=(np.sum(np.abs(start_state-end_state))**2)/3
         return cost
  
     def update_start_state(self,start_state):
@@ -98,12 +102,12 @@ class motion_primitive:
         rr=np.array(rr).reshape(N,16)
         cc=np.array(cc)
        
-        pdb.set_trace()
+        #pdb.set_trace()
 
         for i in range(N):
             try:
                 if self.check_dynamics(rr[i,:]):
-                    cc[i]=cc[i]+10*self.generate_heuristic(rr[i,0:3],self.end_state[0:3])
+                    cc[i]=cc[i]/1000+ 10*self.generate_heuristic(rr[i,0:9],self.end_state[0:9])
                     self.q.put((cc[i],tuple(rr[i])))
                  
             except:
@@ -147,34 +151,7 @@ class graph_construct:
         
 
 
-        
     
-
-    # def find_closest_3D(self, pos):
-    #     # Find the closest point 
-    #     x = pos[0,:]
-    #     y= pos[1,:]
-    #     z = pos[2,:]
-       
-
-    #     closest_pt = np.zeros(pos.shape)  
-    #     idx1=np.searchsorted(self.x_,x)
-    #     prev_idx_is_less1 = ((idx1 == len(self.x_))|(np.fabs(x - self.x_[np.maximum(idx1-1, 0)]) < np.fabs(x - self.x_[np.minimum(idx1, len(self.x_)-1)])))
-    #     idx1[prev_idx_is_less1] -= 1
-    #     pos[0,:]= self.x_[idx1]
-
-    #     idx2=np.searchsorted(self.y_,y)
-    #     prev_idx_is_less2 = ((idx2 == len(self.y_))|(np.fabs(y - self.y_[np.maximum(idx2-1, 0)]) < np.fabs(y - self.y_[np.minimum(idx2, len(self.y_)-1)])))
-    #     idx2[prev_idx_is_less2] -= 1
-    #     pos[1,:]= self.x_[idx2]
-
-
-    #     idx3=np.searchsorted(self.z_,z)
-    #     prev_idx_is_less3 = ((idx3 == len(self.z_))|(np.fabs(z - self.y_[np.maximum(idx3-1, 0)]) < np.fabs(z - self.z_[np.minimum(idx3, len(self.z_)-1)])))
-    #     idx3[prev_idx_is_less3] -= 1
-    #     pos[2,:]= self.x_[idx3]
-
-    #     return pos
     
 
     def generate_nodes(self,start_state,edge_cost,next_node,motion_primitive):
@@ -203,7 +180,7 @@ if __name__ == "__main__":
 
 
     # Returns a motion primitive array"
-    filename = '../util/test_empty.json'
+    filename = '../util/test_maze.json'
     # Videoname = 'MyMap.mp4'
 
     # Load the test example.
@@ -214,21 +191,13 @@ if __name__ == "__main__":
     # This object defines the quadrotor dynamical model and should not be changed.
     robot_radius = 0.25
 
-    start_node[0]=0
-    start_node[1]=0
-    start_node[2]=0
-
-    goal_node[0]=2
-    goal_node[1]=2
-    goal_node[2]=2
-    #TODO: Check this if reqd
     initial_state = np.array([start_node[0],start_node[1],start_node[2],0,0, 0, 0,0,0,0, 0, 0, 1, 0, 0, 0])
     goal_state = np.array([goal_node[0],goal_node[1],goal_node[2],0, 0,0, 0,0,0,0, 0, 0, 1, 0, 0, 0])
     #pdb.set_trace()
     gs = successors(world)
     x0 = np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
     um = np.array([[10,10,10],[20,20,20]]).reshape((2,1,3))
-    tau =0.1
+    tau =0.3
     max_v=1
     max_a=1
 
@@ -252,15 +221,28 @@ if __name__ == "__main__":
 
     i=0
     #while motion_primitive.q.qsize() > 0:
-    while i<1000:
+    node=[]
+    while True:
         node=motion_primitive.q.get()
         node=np.array(node)
         motion_primitive.update_start_state(node[1])
         rr,cc=motion_primitive.get_successors()
-        print(node[1])
+        if node[0]<7:
+            break
+      
         if graph_search.generate_nodes(node[1],cc,rr,motion_primitive):
             break
-        print("Iterator {} Length {}".format(i,motion_primitive.q.qsize()))
+        if i%100==0:
+            print(node[1])
+            print("Iterator {} Length {}".format(i,motion_primitive.q.qsize()))
         i=i+1
+    pdb.set_trace()
+    path =nx.shortest_path(graph_search.G,tuple(start_node),tuple(node[1]),weight='cost')
 
-    #path =nx.shortest_path(graph_search.G,tuple(graph_search.start_state,tuple(node),weight='cost')
+    waypoints=[]
+    for i in range(len(path)):
+        waypoints.append(np.asarray(path[i][0:3]))
+    print(waypoints)
+    csvfile = open('waypoints.csv', 'wb')
+    df = pd.DataFrame(waypoints)
+    df.to_csv('waypoints.csv', index=False)
