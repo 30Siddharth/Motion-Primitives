@@ -64,22 +64,14 @@ class successors(object):
         #pdb.set_trace()
         for i in range(N):
             collision_flag = False
-            # TODO check for collision using occupancy map
             D[i,:,:] = np.append(x0[0:9],J0[i,:,:]).reshape((4,3))
             xf = D[0,:] + D[1,:]*tau + 0.5*D[2,:]*tau**2 + (1/6)*D[3,:]*tau**3
-            collision_flag = self.collision_check(xf)
-            if collision_flag is True:
-                Cs[i] = np.inf
-                
-            else:
-                Cs[i] = np.sum(np.abs(J0[i,:,:]))
+            collision_flag = self.collision_check(xf[0:2])
+            Cs[i] = np.sum(np.abs(J0[i,:,:]))
                
-        #pdb.set_trace()     
+        # Forward Simulation and Collison Check
         rr,cc=self.forward_simulate(x0, J0, tau,D,Rs,Cs)     
-        # for j in range(len(process_arr)):
-        #     process_arr[j].join()
-       
-        #pdb.set_trace()
+     
         return rr,cc
 
     def forward_simulate(self, x0, J0, tau,D,return_Rs,return_cc):
@@ -104,8 +96,7 @@ class successors(object):
         err_cs = M X 1 np array of the cost of the trajectory based on the controller's
                  ability to follow the trajectory
         '''
-        #pdb.set_trace()
-        #TODO update self.D
+     
         t_final = tau
         initial_state  = {'x': tuple(x0[0:3]),
                           'v': tuple(x0[3:6]),
@@ -124,7 +115,7 @@ class successors(object):
                                                           traj,         
                                                           t_final,self.occ_map)
 
-       # pdb.set_trace()
+       # TODO: Exit state check. Taking flat outputs
         if True:
             err = np.array(flat['x'][-1].shape)  # TODO check if order is stored in the same order in both dictionary
             err_cs = np.sum(np.absolute(err))
@@ -143,8 +134,7 @@ class successors(object):
         else:
             err_cs = np.inf
             Rs = None
-       # print(Rs)
-        # pdb.set_trace()
+      
         return_Rs=Rs
         return_cc=return_cc+err_cs+col_c.reshape(729,1)
         return return_Rs, return_cc
@@ -161,11 +151,14 @@ class successors(object):
         Flag: True or False based on collision
         '''
         idx = self.occ_map.metric_to_index(x)
-        
-        if idx in self.occ_map.map[:]:
+        idx=idx[0]
+        try:
+            if self.occ_map.map[[0],idx[1],idx[2]]:
+                return True
+            else:
+                return False
+        except:
             return True
-        else:
-            return False
 
 class trajectory(object):
     def __init__(self, D):
@@ -218,14 +211,13 @@ class trajectory(object):
             x_dddot = (D[:,3,:])
         else:
             x=D[:,0,:]
-        #pdb.set_trace()
+       
         flat_output = { 'x':x, 'x_dot':x_dot, 'x_ddot':x_ddot, 'x_dddot':x_dddot, 'x_ddddot':x_ddddot,
                         'yaw':yaw, 'yaw_dot':yaw_dot}
         return flat_output
 
 
 if __name__ == "__main__":
-    # Choose a test example file. You should write your own example files too!
     filename = '../util/test_maze.json'
     # Videoname = 'MyMap.mp4'
 

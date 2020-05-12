@@ -38,7 +38,7 @@ class SE3Control(object):
         self.inertia = np.diag(np.array([self.Ixx, self.Iyy, self.Izz])) # kg*m^2
         self.g = 9.81 # m/s^2
         
-        # STUDENT CODE HERE
+   
         # Declaring constants:
         Arml  = self.arm_length
         gamma = self.k_drag/self.k_thrust
@@ -47,23 +47,6 @@ class SE3Control(object):
                                [-Arml,0,Arml,0],
                                [gamma,-gamma,gamma,-gamma]])
         self.Gamma_inv = np.linalg.inv(Gamma_inv)
-
-
-
-        # Delcaring the Control Gains
-        # self.K_rot           = np.diag([2500,2500,18.75])
-        # self.K_omega         = np.diag([300,300,7.55])
-        # self.K_d             = np.diag([4.5,4.5,6])
-        # self.K_p             = np.diag([8.5,8.5,8])
-
-        # self.K_rot           = np.diag([500,500,18.75])
-        # self.K_omega         = np.diag([2.5,2.5,7.55])
-        # self.K_d             = np.diag([100,100,6])
-        # self.K_p             = np.diag([2.5,2.5,8])
-        # self.K_rot           = np.diag([5,5,0])
-        # self.K_omega         = np.diag([1,1,0])
-        # self.K_d             = np.diag([3,3,20])
-        # self.K_p             = np.diag([2,2,5])
 
 
         # Tuning from ideal response for linear motion
@@ -118,13 +101,7 @@ class SE3Control(object):
         cmd_thrust = 0
         cmd_moment = np.zeros((3,))
         cmd_q = np.zeros((4,))
-        # print('Omega: ',state['q'])
-        # print('Qaurt: ',state['q'])
-        # print('Yaw: ', flat_output['yaw'])
-
-        # STUDENT CODE HERE
-        
-        ## **** Computing U1 *****
+    
 
         # Rotation
         # pdb.set_trace()
@@ -175,19 +152,13 @@ class SE3Control(object):
       
         # Error in rotation
         err_rot = 0.5*(np.matmul(R_des.transpose(0,2,1),R) - np.matmul(R.transpose(0,2,1),R_des))
-        # print(err_rot)
         err_rot = np.array([-err_rot[:,1,2], err_rot[:,0,2], -err_rot[:,0,1]]).T
-        # err_rot = np.array([err_rot[1,0], -err_rot[2,0], err_rot[2,1]])
-        # np.where(err_rot < 10e-6, 0, err_rot)
+     
         
 
         # Error in angular velocity
         err_omega = -(flat_output['yaw_dot'] - state['w'])
-        # np.where(err_omega < 10e-6, 0, err_omega)
-        
 
-        # Computing the Input forces
-        # print('err Rot', err_rot)
         U2 = np.matmul(-np.matmul(err_rot,self.K_rot) - np.matmul(err_omega,self.K_omega),self.inertia)  #<---------------------<<<
         U2 = np.array([U2[:,0], U2[:,1], U2[:,2]]).T
 
@@ -196,7 +167,7 @@ class SE3Control(object):
         U = np.array([u1,U2[:,0],U2[:,1],U2[:,2]])
         forces = np.matmul(self.Gamma_inv,U)
         forces= np.where(forces <0,0, forces)
-        # print(state['x'],'X_state')
+       
 
         cmd_thrust = u1
         cmd_moment = U2
@@ -206,12 +177,12 @@ class SE3Control(object):
 
         
         cmd_q = Rotation.from_matrix(R_des).as_quat()
-        # print('!')
+
        
 
         control_input = {'cmd_motor_speeds':cmd_motor_speeds,
                          'cmd_thrust':cmd_thrust,
                          'cmd_moment':cmd_moment,
                          'cmd_q':cmd_q}
-        #pdb.set_trace()
+       
         return control_input

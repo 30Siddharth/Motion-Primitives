@@ -62,7 +62,8 @@ class motion_primitive:
     def u_max(self,u):
         self.u_max=u
     
-    def generate_heuristic(self,start_state,end_state):
+    def generate_heuristic(self,start_state,end_state): 
+        # Heuristic cost function - Distance based initially then when approaches goal it starts to take into account velocity and acceleration
   
         cost=(start_state[0]-end_state[0])**2+(start_state[1]-end_state[1])**2+(start_state[2]-end_state[2])**2 
         
@@ -101,8 +102,6 @@ class motion_primitive:
         N=self.discretize**3
         rr=np.array(rr).reshape(N,16)
         cc=np.array(cc)
-       
-        #pdb.set_trace()
 
         for i in range(N):
             try:
@@ -111,7 +110,7 @@ class motion_primitive:
                     self.q.put((cc[i],tuple(rr[i])))
                  
             except:
-                i=0
+                continue
         return rr,cc
         
 
@@ -145,13 +144,9 @@ class graph_construct:
     
     def discretize_3D(self):
             # Discretize the 3D sparce . 
-        self.x_ = np.linspace(-10, 10,101)
-        self.y_ = np.linspace(-10, 10, 101)
-        self.z_ = np.linspace(-10, 10, 101)
-        
-
-
-    
+        self.x_ = np.linspace(0, 10,101)
+        self.y_ = np.linspace(0, 10, 101)
+        self.z_ = np.linspace(0, 10, 101)
     
 
     def generate_nodes(self,start_state,edge_cost,next_node,motion_primitive):
@@ -167,22 +162,17 @@ class graph_construct:
 
             # check if the new node added is goal node if yes stop the graph. Non optimal solution
                
-        
-
-
-
-    
-
-
- 
-
 if __name__ == "__main__":
+    """
+        current state of the code:
+        The number of path generated are too high which is taking  all the memory in RAM.
+        Code speed improvements tried - vectorization, multiprocessing, multithreading
 
-
+        TODO: Convergence of path. 
+    """
     # Returns a motion primitive array"
     filename = '../util/test_maze.json'
-    # Videoname = 'MyMap.mp4'
-
+    
     # Load the test example.
     file = Path(inspect.getsourcefile(lambda:0)).parent.resolve() / '..' / 'util' / filename
     world = World.from_file(file)          # World boundary and obstacles.
@@ -197,7 +187,7 @@ if __name__ == "__main__":
     gs = successors(world)
     x0 = np.array([1,2,3,0.1,0.1,0.1,0.001,0.001,0.001,0,0,0,1,0,0,0])
     um = np.array([[10,10,10],[20,20,20]]).reshape((2,1,3))
-    tau =0.3
+    tau =0.2
     max_v=1
     max_a=1
 
@@ -215,12 +205,7 @@ if __name__ == "__main__":
     print('time completed ',round(finish-start,2))
     graph_search.generate_nodes(start_node,cc,rr,motion_primitive)
    
- 
- 
-    
-
     i=0
-    #while motion_primitive.q.qsize() > 0:
     node=[]
     while True:
         node=motion_primitive.q.get()
