@@ -1,0 +1,20 @@
+Author: Siddharth Singh
+
+Date updated: April 4, 2020
+
+Last Done:
+1. Fixed the quintic trajectory generator
+
+Observations;
+1. The Speed matters. Works best for 3 m/s 
+2. The controller need to be tuned, especially for the damping. We can sacrifice rise time for now. It fails to stop and overshoots which causes collisions.
+3. The waypoints cannot be close.
+4. The trajectory is smooth and pretty similar to the cubic spline.
+
+To Do:
+1. Fix the controller
+2. Identify reason of why it needs higher Speed
+3. Write code for collision detection
+4. Identify other ways to get sparse path
+5. Make different files for quintic and cubic
+6. Try the optimisation method
